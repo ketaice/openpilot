@@ -52,12 +52,14 @@ ui: $(OBJS)
 	      $(CEREAL_LIBS) \
 	      $(ZMQ_LIBS) \
         -L/system/vendor/lib64 \
+        -lhardware \
         $(OPENGL_LIBS) \
         -lcutils -lm -llog
 
-../common/framebuffer.o: ../common/framebuffer.cc
+%.o: %.cc
 	@echo "[ CXX ] $@"
 	$(CXX) $(CXXFLAGS) -MMD \
+           -Iinclude -I.. -I../.. \
            -I$(PHONELIBS)/android_frameworks_native/include \
            -I$(PHONELIBS)/android_system_core/include \
            -I$(PHONELIBS)/android_hardware_libhardware/include \

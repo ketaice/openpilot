@@ -4,8 +4,6 @@ os.environ['FAKEUPLOAD'] = "1"
 from common.testing import phone_only
 from selfdrive.manager import manager_init, manager_prepare
 from selfdrive.manager import start_managed_process, kill_managed_process, get_running
-from selfdrive.manager import manage_baseui
-from selfdrive.config import CruiseButtons
 from functools import wraps
 import time
 
@@ -42,25 +40,25 @@ def with_processes(processes):
     return wrap
   return wrapper
 
-@phone_only
-@with_processes(['controlsd', 'radard'])
-def test_controls():
-  from selfdrive.test.plant.plant import Plant
-
-  # start the fake car for 2 seconds
-  plant = Plant(100)
-  for i in range(200):
-    if plant.rk.frame >= 20 and plant.rk.frame <= 25:
-      cruise_buttons = CruiseButtons.RES_ACCEL
-      # rolling forward
-      assert plant.speed > 0
-    else:
-      cruise_buttons = 0
-    plant.step(cruise_buttons = cruise_buttons)
-  plant.close()
-
-  # assert that we stopped
-  assert plant.speed == 0.0
+#@phone_only
+#@with_processes(['controlsd', 'radard'])
+#def test_controls():
+#  from selfdrive.test.plant.plant import Plant
+#
+#  # start the fake car for 2 seconds
+#  plant = Plant(100)
+#  for i in range(200):
+#    if plant.rk.frame >= 20 and plant.rk.frame <= 25:
+#      cruise_buttons = CruiseButtons.RES_ACCEL
+#      # rolling forward
+#      assert plant.speed > 0
+#    else:
+#      cruise_buttons = 0
+#    plant.step(cruise_buttons = cruise_buttons)
+#  plant.close()
+#
+#  # assert that we stopped
+#  assert plant.speed == 0.0
 
 @phone_only
 @with_processes(['loggerd', 'logmessaged', 'tombstoned', 'proclogd', 'logcatd'])
@@ -93,10 +91,3 @@ def test_ui():
 def test_uploader():
   print "UPLOADER"
   time.sleep(10.0)
-
-@phone_only
-def test_baseui():
-  manage_baseui(True)
-  time.sleep(10.0)
-  manage_baseui(False)
-

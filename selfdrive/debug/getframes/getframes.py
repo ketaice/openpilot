@@ -1,9 +1,7 @@
 #!/usr/bin/env python
 import os
-import time
 import subprocess
 from cffi import FFI
-import ctypes
 
 import numpy as np
 
@@ -42,26 +40,26 @@ typedef struct VisionStreamBufs {
   } buf_info;
 } VisionStreamBufs;
 
-typedef struct VisionBuf {
+typedef struct VIPCBuf {
   int fd;
   size_t len;
   void* addr;
-} VisionBuf;
+} VIPCBuf;
 
-typedef struct VisionBufExtra {
+typedef struct VIPCBufExtra {
   uint32_t frame_id; // only for yuv
-} VisionBufExtra;
+} VIPCBufExtra;
 
 typedef struct VisionStream {
   int ipc_fd;
   int last_idx;
   int num_bufs;
   VisionStreamBufs bufs_info;
-  VisionBuf *bufs;
+  VIPCBuf *bufs;
 } VisionStream;
 
 int visionstream_init(VisionStream *s, VisionStreamType type, bool tbuffer, VisionStreamBufs *out_bufs_info);
-VisionBuf* visionstream_get(VisionStream *s, VisionBufExtra *out_extra);
+VIPCBuf* visionstream_get(VisionStream *s, VIPCBufExtra *out_extra);
 void visionstream_destroy(VisionStream *s);
 
 """

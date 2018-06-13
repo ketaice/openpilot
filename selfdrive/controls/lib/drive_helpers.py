@@ -1,9 +1,60 @@
+from cereal import car
 from common.numpy_fast import clip
+from selfdrive.config import Conversions as CV
+
+# kph
+V_CRUISE_MAX = 144
+V_CRUISE_MIN = 8
+V_CRUISE_DELTA = 8
+V_CRUISE_ENABLE_MIN = 40
+
+class MPC_COST_LAT:
+  PATH = 1.0
+  LANE = 3.0
+  HEADING = 1.0
+  STEER_RATE = 1.0
+
+
+class MPC_COST_LONG:
+  TTC = 5.0
+  DISTANCE = 0.1
+  ACCELERATION = 10.0
+  JERK = 20.0
+
+
+class EventTypes:
+  ENABLE = 'enable'
+  PRE_ENABLE = 'preEnable'
+  NO_ENTRY = 'noEntry'
+  WARNING = 'warning'
+  USER_DISABLE = 'userDisable'
+  SOFT_DISABLE = 'softDisable'
+  IMMEDIATE_DISABLE = 'immediateDisable'
+  PERMANENT = 'permanent'
+
+
+def create_event(name, types):
+  event = car.CarEvent.new_message()
+  event.name = name
+  for t in types:
+    setattr(event, t, True)
+  return event
+
+
+def get_events(events, types):
+  out = []
+  for e in events:
+    for t in types:
+      if getattr(e, t):
+        out.append(e.name)
+  return out
+
 
 def rate_limit(new_value, last_value, dw_step, up_step):
   return clip(new_value, last_value + dw_step, last_value + up_step)
 
-def learn_angle_offset(lateral_control, v_ego, angle_offset, c_poly, c_prob, y_des, steer_override):
+
+def learn_angle_offset(lateral_control, v_ego, angle_offset, c_poly, c_prob, angle_steers, steer_override):
   # simple integral controller that learns how much steering offset to put to have the car going straight
   # while being in the middle of the lane
   min_offset = -5.  # deg
@@ -12,7 +63,8 @@ def learn_angle_offset(lateral_control, v_ego, angle_offset, c_poly, c_prob, y_d
   min_learn_speed = 1.
 
   # learn less at low speed or when turning
-  alpha_v = alpha * c_prob * (max(v_ego - min_learn_speed, 0.)) / (1. + 0.5*abs(y_des))
+  slow_factor = 1. / (1. + 0.02 * abs(angle_steers) * v_ego)
+  alpha_v = alpha * c_prob * (max(v_ego - min_learn_speed, 0.)) * slow_factor
 
   # only learn if lateral control is active and if driver is not overriding:
   if lateral_control and not steer_override:
@@ -20,3 +72,21 @@ def learn_angle_offset(lateral_control, v_ego, angle_offset, c_poly, c_prob, y_d
     angle_offset = clip(angle_offset, min_offset, max_offset)
 
   return angle_offset
+
+
+def update_v_cruise(v_cruise_kph, buttonEvents, enabled):
+  # handle button presses. TODO: this should be in state_control, but a decelCruise press
+  # would have the effect of both enabling and changing speed is checked after the state transition
+  for b in buttonEvents:
+    if enabled and not b.pressed:
+      if b.type == "accelCruise":
+        v_cruise_kph += V_CRUISE_DELTA - (v_cruise_kph % V_CRUISE_DELTA)
+      elif b.type == "decelCruise":
+        v_cruise_kph -= V_CRUISE_DELTA - ((V_CRUISE_DELTA - v_cruise_kph) % V_CRUISE_DELTA)
+      v_cruise_kph = clip(v_cruise_kph, V_CRUISE_MIN, V_CRUISE_MAX)
+
+  return v_cruise_kph
+
+
+def initialize_v_cruise(v_ego):
+  return int(round(max(v_ego * CV.MS_TO_KPH, V_CRUISE_ENABLE_MIN)))

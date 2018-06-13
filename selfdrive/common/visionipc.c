@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <string.h>
 #include <unistd.h>
 #include <assert.h>
 #include <errno.h>
@@ -126,7 +127,7 @@ int vipc_send(int fd, const VisionPacket *p2) {
   return sendrecv_with_fds(true, fd, (void*)&p, sizeof(p), (int*)p2->fds, p2->num_fds, NULL);
 }
 
-void visionbufs_load(VisionBuf *bufs, const VisionStreamBufs *stream_bufs,
+void vipc_bufs_load(VIPCBuf *bufs, const VisionStreamBufs *stream_bufs,
                      int num_fds, const int* fds) {
   for (int i=0; i<num_fds; i++) {
     if (bufs[i].addr) {
@@ -180,10 +181,10 @@ int visionstream_init(VisionStream *s, VisionStreamType type, bool tbuffer, Visi
   s->bufs_info = rp.d.stream_bufs;
 
   s->num_bufs = rp.num_fds;
-  s->bufs = calloc(s->num_bufs, sizeof(VisionBuf));
+  s->bufs = calloc(s->num_bufs, sizeof(VIPCBuf));
   assert(s->bufs);
 
-  visionbufs_load(s->bufs, &rp.d.stream_bufs, s->num_bufs, rp.fds);
+  vipc_bufs_load(s->bufs, &rp.d.stream_bufs, s->num_bufs, rp.fds);
 
   if (out_bufs_info) {
     *out_bufs_info = s->bufs_info;
@@ -192,7 +193,22 @@ int visionstream_init(VisionStream *s, VisionStreamType type, bool tbuffer, Visi
   return 0;
 }
 
-VisionBuf* visionstream_get(VisionStream *s, VisionBufExtra *out_extra) {
+void visionstream_release(VisionStream *s) {
+  int err;
+  if (s->last_idx >= 0) {
+    VisionPacket rep = {
+      .type = VIPC_STREAM_RELEASE,
+      .d = { .stream_rel = {
+        .type = s->last_type,
+        .idx = s->last_idx,
+      }}
+    };
+    err = vipc_send(s->ipc_fd, &rep);
+    s->last_idx = -1;
+  }
+}
+
+VIPCBuf* visionstream_get(VisionStream *s, VIPCBufExtra *out_extra) {
   int err;
 
   VisionPacket rp;
@@ -206,7 +222,7 @@ VisionBuf* visionstream_get(VisionStream *s, VisionBufExtra *out_extra) {
     VisionPacket rep = {
       .type = VIPC_STREAM_RELEASE,
       .d = { .stream_rel = {
-        .type = rp.d.stream_acq.type,
+        .type = s->last_type,
         .idx = s->last_idx,
       }}
     };
@@ -216,6 +232,7 @@ VisionBuf* visionstream_get(VisionStream *s, VisionBufExtra *out_extra) {
     }
   }
 
+  s->last_type = rp.d.stream_acq.type;
   s->last_idx = rp.d.stream_acq.idx;
   assert(s->last_idx < s->num_bufs);
 
@@ -227,6 +244,20 @@ VisionBuf* visionstream_get(VisionStream *s, VisionBufExtra *out_extra) {
 }
 
 void visionstream_destroy(VisionStream *s) {
+  int err;
+
+  if (s->last_idx >= 0) {
+    VisionPacket rep = {
+      .type = VIPC_STREAM_RELEASE,
+      .d = { .stream_rel = {
+        .type = s->last_type,
+        .idx = s->last_idx,
+      }}
+    };
+    err = vipc_send(s->ipc_fd, &rep);
+    s->last_idx = -1;
+  }
+
   for (int i=0; i<s->num_bufs; i++) {
     if (s->bufs[i].addr) {
       munmap(s->bufs[i].addr, s->bufs[i].len);
